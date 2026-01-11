@@ -1,0 +1,25 @@
+# Virtual environment
+.venv/
+
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+
+# Date folders (calibration output)
+Jan*
+Feb*
+Mar*
+Apr*
+May*
+Jun*
+Jul*
+Aug*
+Sep*
+Oct*
+Nov*
+Dec*
+
