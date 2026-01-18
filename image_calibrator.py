@@ -68,6 +68,7 @@ class ImageCalibrator:
                 # pixel_values /= pixel_values.max()
                 photon_counts.append(pixel_values[position[0]-self.roi_side_length//2:position[0]-self.roi_side_length//2+self.roi_side_length, position[1]-self.roi_side_length//2:position[1]-self.roi_side_length//2+self.roi_side_length].sum())
         if save_histogram:
+            plt.figure()
             plt.hist(photon_counts, bins=100)
             plt.xlabel('Photon Count')
             plt.ylabel('Frequency')
@@ -84,6 +85,7 @@ class ImageCalibrator:
         avreaged_photon_counts /= self.grid_size[0]*self.grid_size[1]
         print(len(avreaged_photon_counts))
         if save_histogram:
+            plt.figure()
             plt.hist(avreaged_photon_counts, bins=100)
             plt.xlabel('Photon Count')
             plt.ylabel('Frequency')
@@ -192,7 +194,7 @@ class ImageCalibrator:
 
 
 def main():
-    images_folder_path = input("Enter the path to the images folder: ")
+    
     images_folder_path = "./Jan11_2026_132241calibration_image"
     calibrator = ImageCalibrator(grid_size=(10, 10), roi_side_length=5,images_folder_path=images_folder_path)
     calibrator.calibrate()
