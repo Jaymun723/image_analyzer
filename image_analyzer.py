@@ -72,11 +72,12 @@ class ImageAnalyzer:
 
     def plot_graph(self, x_data, y_data, x_label, y_label, title, save_path):
         plt.figure()
-        plt.plot(x_data, y_data)
+        plt.plot(x_data, y_data,marker='o')
         plt.xlabel(x_label)
         plt.ylabel(y_label)
         plt.title(title)
         plt.savefig(save_path)
+        # plt.show()
     
     def plot_survival_vs_parameter(self):
         survival_ratios = []
