@@ -5,6 +5,15 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 import pandas as pd
+from dataclasses import dataclass
+from pprint import pprint as pp
+# from visualizer import Visualizer
+@dataclass
+class ExperimentResult:
+    parameter_name: str
+    images_per_cycle: int
+    total_sites: int = None
+    data: pd.DataFrame = None
 
 class ImageAnalyzer:
     def __init__(self, 
@@ -59,6 +68,24 @@ class ImageAnalyzer:
         
         return param_idx, rep_idx, image_type
 
+    def atoms_in_image(self, image_path:str) -> np.ndarray:
+        occupancy_matrix=[]
+        image = Image.open(os.path.join(self.images_folder_path, image_path))
+        pixel_values = np.array(image)
+        # pixel_values = pixel_values.astype(np.float32)
+        for atom in self.atoms:
+            if pixel_values[atom["position_y"]-self.roi_side_length//2:atom["position_y"]-self.roi_side_length//2+self.roi_side_length, atom["position_x"]-self.roi_side_length//2:atom["position_x"]-self.roi_side_length//2+self.roi_side_length].sum() > atom["threshold"]:
+                occupancy_matrix.append(1)
+            else:
+                occupancy_matrix.append(0)
+        # print(f"atom count in {image_path} is {atom_count}")
+        return np.array(occupancy_matrix)
+
+    def atoms_survival_ratio(self, ref_occupancy:np.ndarray, final_occupancy:np.ndarray): 
+        total_final = final_occupancy.sum()
+        total_ref = ref_occupancy.sum()
+        return total_final / total_ref if total_ref > 0 else None
+
     def analyze_images(self):
         images = sorted(os.listdir(self.images_folder_path))
         rows = []
@@ -66,10 +93,94 @@ class ImageAnalyzer:
         for image_idx, image in enumerate(images):
             param_idx, rep_idx, image_type = self.image_info(image_idx)
             atoms_in_image = self.atoms_in_image(image)
-            rows.append({"parameter_index": param_idx, "repetition_index": rep_idx, "image_type": image_type, "atoms_in_image": atoms_in_image})
+            total_atoms = atoms_in_image.sum()
+            rows.append({"parameter_index": param_idx, "repetition_index": rep_idx, "image_type": image_type, "atoms_in_image": atoms_in_image, "total_atoms": total_atoms})
             
-        self.images_data = pd.DataFrame(rows)
+        self.data = pd.DataFrame(rows)
 
+    def data_grid_average(self):
+        rows = []
+        if self.images_per_cycle == 2:
+            initial_image = self.data["image_type"] == 0
+            final_image = self.data["image_type"] == 1
+            for parameter in range(len(self.parameters)):
+                mask_initial = (self.data["parameter_index"] == parameter ) & initial_image
+                mask_final = (self.data["parameter_index"] == parameter ) & final_image
+                total_atoms_initial = self.data[mask_initial]["total_atoms"].sum()
+                total_atoms_final = self.data[mask_final]["total_atoms"].sum()
+                rows.append(
+                    {
+                        "parameter": self.parameters[parameter], 
+                        "total_atoms_initial": total_atoms_initial, 
+                        "total_atoms_final": total_atoms_final
+                        }
+                        )
+            return ExperimentResult(
+                    parameter_name=self.parameter_name, 
+                    images_per_cycle=self.images_per_cycle, 
+                    total_sites=self.n_reps*len(self.atoms),
+                    data=pd.DataFrame(rows)
+                    )
+        else:
+            for parameter in range(len(self.parameters)):
+                mask_initial = (self.data["parameter_index"] == parameter )
+                total_atoms= self.data[mask_initial]["total_atoms"].sum()
+                rows.append(
+                    {
+                        "parameter": self.parameters[parameter], 
+                        "total_atoms": total_atoms, 
+                        }
+                        )
+            return ExperimentResult(
+                parameter_name=self.parameter_name, 
+                images_per_cycle=self.images_per_cycle, 
+                total_sites=self.n_reps*len(self.atoms),
+                data=pd.DataFrame(rows)
+                )
+        
+    def data_per_atom(self, atom_index:int):
+        rows = []
+        if self.images_per_cycle == 2:
+            initial_image = self.data["image_type"] == 0
+            final_image = self.data["image_type"] == 1
+            for parameter in range(len(self.parameters)):
+                mask_initial = (self.data["parameter_index"] == parameter ) & initial_image
+                mask_final = (self.data["parameter_index"] == parameter ) & final_image
+                atom_presence_initial = self.data[mask_initial]["atoms_in_image"].str[atom_index].sum()
+                atom_presence_final = self.data[mask_final]["atoms_in_image"].str[atom_index].sum()
+                rows.append(
+                    {
+                        "parameter": self.parameters[parameter], 
+                        "total_atoms_initial": atom_presence_initial, 
+                        "total_atoms_final": atom_presence_final
+                        }
+                        )
+            return ExperimentResult(
+                parameter_name=self.parameter_name, 
+                images_per_cycle=self.images_per_cycle, 
+                total_sites=self.n_reps, 
+                data=pd.DataFrame(rows)
+                )
+
+        else:
+            for parameter in range(len(self.parameters)):
+                mask = (self.data["parameter_index"] == parameter)
+                total_atoms = self.data[mask]["total_atoms"].sum()
+                rows.append(
+                    {
+                        "parameter": self.parameters[parameter], 
+                        "total_atoms": total_atoms
+                        }
+                        )
+            return ExperimentResult(
+                parameter_name=self.parameter_name, 
+                images_per_cycle=self.images_per_cycle, 
+                total_sites=self.n_reps,  
+                data=pd.DataFrame(rows)
+                )
+
+        
+class plotter:
     def plot_graph(self, x_data, y_data, x_label, y_label, title, save_path):
         plt.figure()
         plt.plot(x_data, y_data,marker='o')
@@ -127,23 +238,6 @@ class ImageAnalyzer:
         # f"Survival Ratio vs {self.parameter_name}", 
         # f"survival_ratio_vs_{self.parameter_name}_atom_{atom_index}.png")
 
-    def atoms_in_image(self, image_path:str) -> np.ndarray:
-        occupancy_matrix=[]
-        image = Image.open(os.path.join(self.images_folder_path, image_path))
-        pixel_values = np.array(image)
-        pixel_values = pixel_values.astype(np.float32)
-        for atom in self.atoms:
-            if pixel_values[atom["position_y"]-self.roi_side_length//2:atom["position_y"]-self.roi_side_length//2+self.roi_side_length, atom["position_x"]-self.roi_side_length//2:atom["position_x"]-self.roi_side_length//2+self.roi_side_length].sum() > atom["threshold"]:
-                occupancy_matrix.append(1)
-            else:
-                occupancy_matrix.append(0)
-        # print(f"atom count in {image_path} is {atom_count}")
-        return np.array(occupancy_matrix)
-
-    def atoms_survival_ratio(self, ref_occupancy:np.ndarray, final_occupancy:np.ndarray): 
-        total_final = final_occupancy.sum()
-        total_ref = ref_occupancy.sum()
-        return total_final / total_ref if total_ref > 0 else None
     
 def main():
     images_folder_path ="/home/ohmorig-neo/image_analyzer/Jan09_2026_180036first_mw_resonance"
@@ -164,8 +258,9 @@ def main():
     )
 
     analyzer.analyze_images()
-    # analyzer.plot_survival_vs_parameter()
-    analyzer.plot_survival_per_atom(43)
-
+    data_per_atom = analyzer.data_per_atom(3).data
+    data_grid_average = analyzer.data_grid_average().data
+    visualizer = Visualizer(data_grid_average)
+    visualizer.plot_data()
 if __name__ == "__main__":
     main()
