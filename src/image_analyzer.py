@@ -91,14 +91,17 @@ class ImageAnalyzer:
         rows = []
         print(len(images))
         for image_idx, image in enumerate(images):
-            param_idx, rep_idx, image_type = self.image_info(image_idx)
-            atoms_in_image = self.atoms_in_image(image)
-            total_atoms = atoms_in_image.sum()
-            rows.append({"parameter_index": param_idx, "repetition_index": rep_idx, "image_type": image_type, "atoms_in_image": atoms_in_image, "total_atoms": total_atoms})
+            if image.endswith(".db"):
+                continue
+            if image.endswith(".tif"):
+                param_idx, rep_idx, image_type = self.image_info(image_idx)
+                atoms_in_image = self.atoms_in_image(image)
+                total_atoms = atoms_in_image.sum()
+                rows.append({"parameter_index": param_idx, "repetition_index": rep_idx, "image_type": image_type, "atoms_in_image": atoms_in_image, "total_atoms": total_atoms})
             
         self.data = pd.DataFrame(rows)
 
-    def data_grid_average(self):
+    def data_grid_average(self) -> ExperimentResult:
         rows = []
         if self.images_per_cycle == 2:
             initial_image = self.data["image_type"] == 0
@@ -106,13 +109,26 @@ class ImageAnalyzer:
             for parameter in range(len(self.parameters)):
                 mask_initial = (self.data["parameter_index"] == parameter ) & initial_image
                 mask_final = (self.data["parameter_index"] == parameter ) & final_image
-                total_atoms_initial = self.data[mask_initial]["total_atoms"].sum()
-                total_atoms_final = self.data[mask_final]["total_atoms"].sum()
+                total_atoms_initial = self.data[mask_initial]["total_atoms"].mean()
+                total_atoms_final = self.data[mask_final]["total_atoms"].mean()
+                if total_atoms_initial < total_atoms_final:
+                    print(f"total_atoms_initial < total_atoms_final for parameter {parameter}")
+                    print("we skip this parameter")
+                    continue
+                total_atoms_initial_error = self.data[mask_initial]["total_atoms"].std()/np.sqrt(len(self.data[mask_initial]))
+                total_atoms_final_error = self.data[mask_final]["total_atoms"].std()/np.sqrt(len(self.data[mask_final]))
+                ratio = np.array(self.data[mask_final]["total_atoms"]) / np.array(self.data[mask_initial]["total_atoms"])    #total_atoms_final / total_atoms_initial
+                ratio_mean = ratio.mean()
+                ratio_error = ratio.std()/np.sqrt(len(self.data[mask_initial]))
                 rows.append(
                     {
                         "parameter": self.parameters[parameter], 
                         "total_atoms_initial": total_atoms_initial, 
-                        "total_atoms_final": total_atoms_final
+                        "total_atoms_final": total_atoms_final,
+                        "total_atoms_initial_error": total_atoms_initial_error,
+                        "total_atoms_final_error": total_atoms_final_error,
+                        "ratio": ratio_mean,
+                        "ratio_error": ratio_error
                         }
                         )
             return ExperimentResult(
