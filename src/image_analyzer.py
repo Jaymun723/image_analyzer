@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from dataclasses import dataclass
 from pprint import pprint as pp
+from pathlib import Path
+from .numbering import Numbering, ParameterNumbering
 # from visualizer import Visualizer
 
 
@@ -21,8 +23,9 @@ class ExperimentResult:
 class ImageAnalyzer:
     def __init__(
         self,
-        calibration_file: str = None,
-        images_folder_path: str = None,
+        calibration_file: str,
+        images_folder_path: Path,
+        numbering: Numbering = None,
         scan_order: str = None,  # "params first" or "reps first"
         n_reps: int = None,  # number of repetitions of the same parameter value
         n_parameters: int = None,  # number of parameters to scan
@@ -30,10 +33,6 @@ class ImageAnalyzer:
         parameters: list[float] = None,  # list of parameter values
         parameter_name: str = None,  # name of the parameter
     ):
-
-        if calibration_file is None:
-            raise ValueError("calibration_file is required")
-
         with open(calibration_file, "r") as f:
             calibration_data = json.load(f)
 
@@ -42,12 +41,26 @@ class ImageAnalyzer:
         self.calibration_date = calibration_data["calibration_date"]
         self.images_folder_path = images_folder_path
         self.atoms = []
-        self.scan_order = scan_order
-        self.n_reps = n_reps
-        self.n_parameters = n_parameters
-        self.images_per_cycle = images_per_cycle
-        self.parameters = parameters
-        self.parameter_name = parameter_name
+
+        self.numbering = numbering
+        if self.numbering is None:
+            self.numbering = ParameterNumbering(
+                scan_order=scan_order,
+                n_reps=n_reps,
+                n_parameters=n_parameters,
+                images_per_cycle=images_per_cycle,
+                parameters=parameters,
+                parameter_name=parameter_name,
+            )
+        self.indices = list(self.numbering.indices())
+
+        # self.scan_order = scan_order
+        # self.n_reps = n_reps
+        # self.n_parameters = n_parameters
+        # self.images_per_cycle = images_per_cycle
+        # self.parameters = parameters
+        # self.parameter_name = parameter_name
+
         print("images analyzed with data taken on: ", self.calibration_date)
         print(
             "expecting an atom array of size: ",
@@ -60,24 +73,6 @@ class ImageAnalyzer:
 
         for i in range(self.grid_size[0] * self.grid_size[1]):
             self.atoms.append(calibration_data[f"atom {i}"])
-
-    def image_info(self, img_idx):
-        """returns the parameter index, the repetition index, and the image type (final or initial) for the given image index"""
-        cycle = img_idx // self.images_per_cycle
-        image_type = (
-            1 if (img_idx % self.images_per_cycle == self.images_per_cycle - 1) else 0
-        )
-
-        if self.scan_order == "params first":
-            # Sequence: p0_r0, p0_r1, p0_r2, ..., p1_r0, p1_r1, ...
-            param_idx = cycle // self.n_reps
-            rep_idx = cycle % self.n_reps
-        else:  # "rep_first"
-            # Sequence: p0_r0, p1_r0, p2_r0, ..., p0_r1, p1_r1, ...
-            rep_idx = cycle // self.n_parameters
-            param_idx = cycle % self.n_parameters
-
-        return param_idx, rep_idx, image_type
 
     def atoms_in_image(self, image_path: str) -> np.ndarray:
         occupancy_matrix = []
@@ -117,18 +112,15 @@ class ImageAnalyzer:
             if image.endswith(".db"):
                 continue
             if image.endswith(".tif"):
-                param_idx, rep_idx, image_type = self.image_info(image_idx)
                 atoms_in_image = self.atoms_in_image(image)
                 total_atoms = atoms_in_image.sum()
-                rows.append(
-                    {
-                        "parameter_index": param_idx,
-                        "repetition_index": rep_idx,
-                        "image_type": image_type,
-                        "atoms_in_image": atoms_in_image,
-                        "total_atoms": total_atoms,
-                    }
-                )
+                row = {
+                    "atoms_in_image": atoms_in_image,
+                    "total_atoms": total_atoms,
+                }
+                row.update(self.indices[image_idx])
+
+                rows.append(row)
 
         self.data = pd.DataFrame(rows)
 
@@ -197,10 +189,13 @@ class ImageAnalyzer:
 
     def data_per_atom(self, atom_index: int):
         rows = []
-        if self.images_per_cycle == 2:
+        if not isinstance(self.numbering, ParameterNumbering):
+            raise ValueError("data_per_atom is only implemented for ParameterNumbering")
+
+        if self.numbering.images_per_cycle == 2:
             initial_image = self.data["image_type"] == 0
             final_image = self.data["image_type"] == 1
-            for parameter in range(len(self.parameters)):
+            for parameter in range(len(self.numbering.parameters)):
                 mask_initial = (
                     self.data["parameter_index"] == parameter
                 ) & initial_image
@@ -213,32 +208,32 @@ class ImageAnalyzer:
                 )
                 rows.append(
                     {
-                        "parameter": self.parameters[parameter],
+                        "parameter": self.numbering.parameters[parameter],
                         "total_atoms_initial": atom_presence_initial,
                         "total_atoms_final": atom_presence_final,
                     }
                 )
             return ExperimentResult(
-                parameter_name=self.parameter_name,
-                images_per_cycle=self.images_per_cycle,
-                total_sites=self.n_reps,
+                parameter_name=self.numbering.parameter_name,
+                images_per_cycle=self.numbering.images_per_cycle,
+                total_sites=self.numbering.n_reps,
                 data=pd.DataFrame(rows),
             )
 
         else:
-            for parameter in range(len(self.parameters)):
+            for parameter in range(len(self.numbering.parameters)):
                 mask = self.data["parameter_index"] == parameter
                 total_atoms = self.data[mask]["total_atoms"].sum()
                 rows.append(
                     {
-                        "parameter": self.parameters[parameter],
+                        "parameter": self.numbering.parameters[parameter],
                         "total_atoms": total_atoms,
                     }
                 )
             return ExperimentResult(
-                parameter_name=self.parameter_name,
-                images_per_cycle=self.images_per_cycle,
-                total_sites=self.n_reps,
+                parameter_name=self.numbering.parameter_name,
+                images_per_cycle=self.numbering.images_per_cycle,
+                total_sites=self.numbering.n_reps,
                 data=pd.DataFrame(rows),
             )
 
