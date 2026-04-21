@@ -106,8 +106,15 @@ class ImageAnalyzer:
 
     def analyze_images(self):
         images = sorted(os.listdir(self.images_folder_path))
+        
         rows = []
-        print(len(images))
+        n_disk = len([1 for image in images if image.endswith('.tif')])
+        
+        print(f"number of images on the disk: {n_disk}")
+        print(f"number of images to analyze: {len(self.indices)}")
+        if n_disk != len(self.indices):
+            raise ValueError(f"number of images on the disk ({n_disk}) does not match the number of images to analyze ({len(self.indices)})")
+            
         for image_idx, image in enumerate(images):
             if image.endswith(".db"):
                 continue

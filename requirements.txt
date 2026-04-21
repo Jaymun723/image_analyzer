@@ -18,3 +18,4 @@ scipy==1.17.0
 six==1.17.0
 tifffile==2025.12.20
 tzdata==2025.3
+tqdm

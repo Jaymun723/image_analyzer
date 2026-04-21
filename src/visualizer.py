@@ -1,4 +1,4 @@
-import matplotlib.pyplot as plt
+ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import curve_fit
 from src.image_analyzer import ExperimentResult

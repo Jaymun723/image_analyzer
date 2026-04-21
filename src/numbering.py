@@ -51,6 +51,15 @@ class DynamicImageNumbering(Numbering):
         for r in range(self.n_reps):
             for n in range(self.n_max):
                 yield {"n": n, "image_index": 0, "repetition_index": r}
-                for image_i in range(1, n + 1):
-                    yield {"n": n, "image_index": image_i, "repetition_index": r}
+                for image_i in range(n):
+                    yield {"n": n, "image_index": image_i+1, "repetition_index": r}
                 yield {"n": n, "image_index": n + 1, "repetition_index": r}
+
+@dataclass
+class ClassicalNumbering(Numbering):
+    n_reps: int
+
+    def indices(self) -> list[dict[str, int]]:
+        for r in range(self.n_reps):
+                yield {"image_index": 0, "repetition_index": r}
+                yield {"image_index": 1, "repetition_index": r}
